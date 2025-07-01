@@ -22,8 +22,7 @@ const logger = new Logger('output');
 const schemas = {
   user: { keyPath: 'id', autoIncrement: true },
 };
-const db = await new Database('Example', 1, schemas);
-const repo = db.getStore('user');
+const db = await new Database('Example', { version: 1, schemas });
 
 const actions = {
   add: async () => {
@@ -32,20 +31,20 @@ const actions = {
     const age = parseInt(prompt('Enter age:'), 10);
     if (!Number.isInteger(age)) return;
     const user = { name, age };
-    await repo.insert(user);
+    await db.insert('user', user);
     logger.log('Added:', user);
   },
 
   get: async () => {
-    const users = await repo.select();
+    const users = await db.select('user');
     logger.log('Users:', users);
   },
 
   update: async () => {
-    const user = await repo.get({ id: 1 });
+    const user = await db.get('user', { id: 1 });
     if (user) {
       user.age += 1;
-      await repo.update(user);
+      await db.update('user', user);
       logger.log('Updated:', user);
     } else {
       logger.log('User with id=1 not found');
@@ -53,13 +52,13 @@ const actions = {
   },
 
   delete: async () => {
-    await repo.delete({ id: 2 });
+    await db.delete('user', { id: 2 });
     logger.log('Deleted user with id=2');
   },
 
   adults: async () => {
-    const users = await repo.select({
-      where: (user) => user.age >= 18,
+    const users = await db.select('user', {
+      filter: (user) => user.age >= 18,
       order: 'name asc',
       limit: 10,
     });
