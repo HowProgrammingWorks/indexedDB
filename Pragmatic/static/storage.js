@@ -22,7 +22,10 @@ class Database {
         resolve();
       };
       request.onerror = (event) => {
-        reject(event.target.error ?? new Error(`IndexedDB: can't open ${this.#name}`));
+        reject(
+          event.target.error ??
+            new Error(`IndexedDB: can't open ${this.#name}`),
+        );
       };
     });
     return this;
@@ -41,7 +44,9 @@ class Database {
   }
 
   #exec(store, operation, mode = 'readwrite') {
-    if (!this.#active) return Promise.reject(new Error('Database not connected'));
+    if (!this.#active) {
+      return Promise.reject(new Error('Database not connected'));
+    }
     return new Promise((resolve, reject) => {
       try {
         const tx = this.#instance.transaction(store, mode);
@@ -68,42 +73,58 @@ class Database {
   }
 
   get({ store, id }) {
-    return this.#exec(store, (s) => {
-      const req = s.get(id);
-      return new Promise((resolve, reject) => {
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
-      });
-    }, 'readonly');
+    return this.#exec(
+      store,
+      (s) => {
+        const req = s.get(id);
+        return new Promise((resolve, reject) => {
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
+        });
+      },
+      'readonly',
+    );
   }
 
   select({ store, where, limit, offset, order, filter, sort }) {
-    return this.#exec(store, (s) => {
-      const results = [];
-      let skipped = 0;
-      return new Promise((resolve, reject) => {
-        const req = s.openCursor();
-        req.onerror = () => reject(req.error);
-        req.onsuccess = (event) => {
-          const cursor = event.target.result;
-          if (!cursor) {
-            const filtered = filter ? results.filter(filter) : results;
-            return resolve(sort ? filtered.toSorted(sort) : Database.#order(filtered, order));
-          }
-          const record = cursor.value;
-          const match = !where || Object.entries(where).every(([k, v]) => record[k] === v);
-          if (match) {
-            if (!offset || skipped >= offset) {
-              results.push(record);
-              if (limit && results.length >= limit) return resolve(results);
-            } else {
-              skipped++;
+    return this.#exec(
+      store,
+      (s) => {
+        const results = [];
+        let skipped = 0;
+        return new Promise((resolve, reject) => {
+          const req = s.openCursor();
+          req.onerror = () => reject(req.error);
+          req.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) {
+              const filtered = filter ? results.filter(filter) : results;
+              return void resolve(
+                sort
+                  ? filtered.toSorted(sort)
+                  : Database.#order(filtered, order),
+              );
             }
-          }
-          cursor.continue();
-        };
-      });
-    }, 'readonly');
+            const record = cursor.value;
+            const match =
+              !where ||
+              Object.entries(where).every(([k, v]) => record[k] === v);
+            if (match) {
+              if (!offset || skipped >= offset) {
+                results.push(record);
+                if (limit && results.length >= limit) {
+                  return void resolve(results);
+                }
+              } else {
+                skipped++;
+              }
+            }
+            cursor.continue();
+          };
+        });
+      },
+      'readonly',
+    );
   }
 
   static #order(arr, order) {

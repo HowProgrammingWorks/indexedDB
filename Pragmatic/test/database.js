@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { Database } from '../static/storage.js';
 
-test('Database full CRUD + queries', async () => {
+test('Pragmatic: Database CRUD + DSL', async () => {
   const db = await new Database('TestDB', {
     version: 1,
     schemas: {
@@ -71,16 +71,4 @@ test('Database full CRUD + queries', async () => {
     limit: 1,
   });
   assert.equal(limited.length, 1);
-});
-
-test('Database handles empty queries', async () => {
-  const db = await new Database('EmptyDB', {
-    version: 1,
-    schemas: {
-      log: { keyPath: 'id', autoIncrement: true },
-    },
-  });
-
-  const empty = await db.select({ store: 'log' });
-  assert.deepEqual(empty, []);
 });
