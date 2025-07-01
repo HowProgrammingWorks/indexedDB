@@ -1,14 +1,14 @@
 class Database {
   #name;
   #version = 1;
-  #schemas = null;
+  #schemas = {};
   #instance = null;
   #active = false;
 
-  constructor(name, { version, schemas }) {
+  constructor(name, { version = 1, schemas = {} } = {}) {
     this.#name = name;
-    if (version) this.#version = version;
-    if (schemas) this.#schemas = schemas;
+    this.#version = version;
+    this.#schemas = schemas;
     return this.#open();
   }
 
@@ -17,14 +17,15 @@ class Database {
       const request = indexedDB.open(this.#name, this.#version);
       request.onupgradeneeded = (event) => this.#upgrade(event.target.result);
       request.onsuccess = (event) => {
-        this.#active = true;
         this.#instance = event.target.result;
+        this.#active = true;
         resolve();
       };
       request.onerror = (event) => {
-        let { error } = event.target;
-        if (!error) error = new Error(`IndexedDB: can't open ${this.#name}`);
-        reject(error);
+        reject(
+          event.target.error ??
+            new Error(`IndexedDB: can't open ${this.#name}`),
+        );
       };
     });
     return this;
@@ -33,9 +34,9 @@ class Database {
   #upgrade(db) {
     for (const [name, schema] of Object.entries(this.#schemas)) {
       if (!db.objectStoreNames.contains(name)) {
-        const store = db.createObjectStore(name, schema);
-        const indexes = schema.indexes || [];
-        for (const index of Object.entries(indexes)) {
+        const store = db.createObjectStore(name, schema.options ?? schema);
+        const indexes = schema.indexes ?? [];
+        for (const index of indexes) {
           store.createIndex(index.name, index.keyPath, index.options);
         }
       }
@@ -52,40 +53,40 @@ class Database {
         const store = tx.objectStore(entity);
         const result = operation(store);
         tx.oncomplete = () => resolve(result);
-        tx.onerror = () => reject(tx.error || new Error('Transaction error'));
+        tx.onerror = () => reject(tx.error ?? new Error('Transaction error'));
       } catch (error) {
         reject(error);
       }
     });
   }
 
-  async insert(entity, record) {
+  insert(entity, record) {
     return this.#exec(entity, (store) => store.add(record));
   }
 
-  async update(entity, record) {
+  update(entity, record) {
     return this.#exec(entity, (store) => store.put(record));
   }
 
-  async delete(entity, { id }) {
+  delete(entity, { id }) {
     return this.#exec(entity, (store) => store.delete(id));
   }
 
-  async get(entity, { id }) {
+  get(entity, { id }) {
     return this.#exec(
       entity,
       (store) => {
         const req = store.get(id);
         return new Promise((resolve, reject) => {
           req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error || new Error(`Can't get ${id}`));
+          req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
         });
       },
       'readonly',
     );
   }
 
-  async select(entity, { where, limit, offset, order, filter, sort } = {}) {
+  select(entity, { where, limit, offset, order, filter, sort } = {}) {
     return this.#exec(
       entity,
       (store) => {
@@ -98,21 +99,16 @@ class Database {
             const cursor = event.target.result;
             if (!cursor) {
               const filtered = filter ? results.filter(filter) : results;
-              const sorted = sort
-                ? filtered.toSorted(sort)
-                : Database.#order(filtered, order);
-              return void resolve(sorted);
+              if (sort) return void resolve(filtered.toSorted(sort));
+              return resolve(Database.#order(filtered, order));
             }
             const record = cursor.value;
-            const match =
-              !where ||
-              Object.entries(where).every(([key, val]) => record[key] === val);
+            const check = ([k, v]) => record[k] === v;
+            const match = !where || Object.entries(where).every(check);
             if (match) {
               if (!offset || skipped >= offset) {
                 results.push(record);
-                if (limit && results.length >= limit) {
-                  return void resolve(results);
-                }
+                if (limit && results.length >= limit) return resolve(results);
               } else {
                 skipped++;
               }
@@ -127,7 +123,7 @@ class Database {
 
   static #order(arr, order) {
     if (!order || typeof order !== 'object') return arr;
-    const [[field, dir]] = Object.entries(order);
+    const [[field, dir = 'asc']] = Object.entries(order);
     const sign = dir === 'desc' ? -1 : 1;
     return [...arr].sort((a, b) => {
       if (a[field] === b[field]) return 0;

@@ -3,28 +3,84 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { Database } from '../static/storage.js';
 
-test('Database basic CRUD', async () => {
-  const schemas = {
-    user: { keyPath: 'id', autoIncrement: true },
-  };
-  const db = await new Database('TestDatabase', { version: 1, schemas });
+test('Database full CRUD + queries', async () => {
+  const db = await new Database('TestDB', {
+    version: 1,
+    schemas: {
+      user: { keyPath: 'id', autoIncrement: true },
+    },
+  });
 
-  await db.insert('user', { name: 'Marcus', age: 30 });
-  await db.insert('user', { name: 'Lucius', age: 20 });
+  // Insert
+  await db.insert({ store: 'user', record: { name: 'Marcus', age: 20 } });
+  await db.insert({ store: 'user', record: { name: 'Lucius', age: 20 } });
+  await db.insert({ store: 'user', record: { name: 'Antoninus', age: 40 } });
 
-  const users = await db.select('user');
-  assert.equal(users.length, 2);
+  // Select all
+  const allUsers = await db.select({ store: 'user' });
+  assert.equal(allUsers.length, 3);
 
-  const record = await db.get('user', { id: 1 });
-  assert.equal(record.name, 'Marcus');
+  // Get
+  const marcus = await db.get({ store: 'user', id: 1 });
+  assert.equal(marcus.name, 'Marcus');
 
-  record.age++;
-  await db.update('user', record);
-
-  const updated = await db.get('user', { id: 1 });
+  // Update
+  marcus.age = 31;
+  await db.update({ store: 'user', record: marcus });
+  const updated = await db.get({ store: 'user', id: 1 });
   assert.equal(updated.age, 31);
 
-  await db.delete('user', { id: 2 });
-  const remaining = await db.select('user');
-  assert.equal(remaining.length, 1);
+  // Delete
+  await db.delete({ store: 'user', id: 2 });
+  const afterDelete = await db.select({ store: 'user' });
+  assert.equal(afterDelete.length, 2);
+
+  // Select with where
+  const list = await db.select({ store: 'user', where: { name: 'Marcus' } });
+  assert.equal(list.length, 1);
+  assert.equal(list[0].age, 31);
+
+  // Select with filter
+  const adults = await db.select({
+    store: 'user',
+    filter: (u) => u.age >= 30,
+  });
+  assert.equal(adults.length, 2);
+  assert.equal(adults[0].name, 'Marcus');
+
+  // Select with order
+  const ordered = await db.select({
+    store: 'user',
+    order: { age: 'desc' },
+  });
+  assert.equal(ordered[0].name, 'Antoninus');
+  assert.equal(ordered[1].name, 'Marcus');
+
+  // Select with offset
+  const skipped = await db.select({
+    store: 'user',
+    offset: 1,
+    order: { name: 'asc' },
+  });
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].name, 'Antoninus');
+
+  // Select with limit
+  const limited = await db.select({
+    store: 'user',
+    limit: 1,
+  });
+  assert.equal(limited.length, 1);
+});
+
+test('Database handles empty queries', async () => {
+  const db = await new Database('EmptyDB', {
+    version: 1,
+    schemas: {
+      log: { keyPath: 'id', autoIncrement: true },
+    },
+  });
+
+  const empty = await db.select({ store: 'log' });
+  assert.deepEqual(empty, []);
 });
