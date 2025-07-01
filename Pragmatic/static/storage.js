@@ -1,7 +1,7 @@
 class Database {
   #name;
-  #version = 1;
-  #schemas = {};
+  #version;
+  #schemas;
   #instance = null;
   #active = false;
 
@@ -22,10 +22,7 @@ class Database {
         resolve();
       };
       request.onerror = (event) => {
-        reject(
-          event.target.error ??
-            new Error(`IndexedDB: can't open ${this.#name}`),
-        );
+        reject(event.target.error ?? new Error(`IndexedDB: can't open ${this.#name}`));
       };
     });
     return this;
@@ -34,24 +31,22 @@ class Database {
   #upgrade(db) {
     for (const [name, schema] of Object.entries(this.#schemas)) {
       if (!db.objectStoreNames.contains(name)) {
-        const store = db.createObjectStore(name, schema.options ?? schema);
+        const store = db.createObjectStore(name, schema);
         const indexes = schema.indexes ?? [];
-        for (const index of indexes) {
-          store.createIndex(index.name, index.keyPath, index.options);
+        for (const { name: idxName, keyPath, options } of indexes) {
+          store.createIndex(idxName, keyPath, options);
         }
       }
     }
   }
 
-  #exec(entity, operation, mode = 'readwrite') {
-    if (!this.#active) {
-      return Promise.reject(new Error('Database not connected'));
-    }
+  #exec(store, operation, mode = 'readwrite') {
+    if (!this.#active) return Promise.reject(new Error('Database not connected'));
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.#instance.transaction(entity, mode);
-        const store = tx.objectStore(entity);
-        const result = operation(store);
+        const tx = this.#instance.transaction(store, mode);
+        const objectStore = tx.objectStore(store);
+        const result = operation(objectStore);
         tx.oncomplete = () => resolve(result);
         tx.onerror = () => reject(tx.error ?? new Error('Transaction error'));
       } catch (error) {
@@ -60,65 +55,55 @@ class Database {
     });
   }
 
-  insert(entity, record) {
-    return this.#exec(entity, (store) => store.add(record));
+  insert({ store, record }) {
+    return this.#exec(store, (s) => s.add(record));
   }
 
-  update(entity, record) {
-    return this.#exec(entity, (store) => store.put(record));
+  update({ store, record }) {
+    return this.#exec(store, (s) => s.put(record));
   }
 
-  delete(entity, { id }) {
-    return this.#exec(entity, (store) => store.delete(id));
+  delete({ store, id }) {
+    return this.#exec(store, (s) => s.delete(id));
   }
 
-  get(entity, { id }) {
-    return this.#exec(
-      entity,
-      (store) => {
-        const req = store.get(id);
-        return new Promise((resolve, reject) => {
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
-        });
-      },
-      'readonly',
-    );
+  get({ store, id }) {
+    return this.#exec(store, (s) => {
+      const req = s.get(id);
+      return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
+      });
+    }, 'readonly');
   }
 
-  select(entity, { where, limit, offset, order, filter, sort } = {}) {
-    return this.#exec(
-      entity,
-      (store) => {
-        const results = [];
-        let skipped = 0;
-        return new Promise((resolve, reject) => {
-          const req = store.openCursor();
-          req.onerror = () => reject(req.error);
-          req.onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (!cursor) {
-              const filtered = filter ? results.filter(filter) : results;
-              if (sort) return void resolve(filtered.toSorted(sort));
-              return resolve(Database.#order(filtered, order));
+  select({ store, where, limit, offset, order, filter, sort }) {
+    return this.#exec(store, (s) => {
+      const results = [];
+      let skipped = 0;
+      return new Promise((resolve, reject) => {
+        const req = s.openCursor();
+        req.onerror = () => reject(req.error);
+        req.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) {
+            const filtered = filter ? results.filter(filter) : results;
+            return resolve(sort ? filtered.toSorted(sort) : Database.#order(filtered, order));
+          }
+          const record = cursor.value;
+          const match = !where || Object.entries(where).every(([k, v]) => record[k] === v);
+          if (match) {
+            if (!offset || skipped >= offset) {
+              results.push(record);
+              if (limit && results.length >= limit) return resolve(results);
+            } else {
+              skipped++;
             }
-            const record = cursor.value;
-            const check = ([k, v]) => record[k] === v;
-            const match = !where || Object.entries(where).every(check);
-            if (match) {
-              if (!offset || skipped >= offset) {
-                results.push(record);
-                if (limit && results.length >= limit) return resolve(results);
-              } else {
-                skipped++;
-              }
-            }
-            cursor.continue();
-          };
-        });
-      },
-      'readonly',
-    );
+          }
+          cursor.continue();
+        };
+      });
+    }, 'readonly');
   }
 
   static #order(arr, order) {

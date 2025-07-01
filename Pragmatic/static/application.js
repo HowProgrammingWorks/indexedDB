@@ -31,20 +31,20 @@ const actions = {
     const age = parseInt(prompt('Enter age:'), 10);
     if (!Number.isInteger(age)) return;
     const user = { name, age };
-    await db.insert('user', user);
+    await db.insert({ store: 'user', record: user });
     logger.log('Added:', user);
   },
 
   get: async () => {
-    const users = await db.select('user');
+    const users = await db.select({ store: 'user' });
     logger.log('Users:', users);
   },
 
   update: async () => {
-    const user = await db.get('user', { id: 1 });
+    const user = await db.get({ store: 'user', id: 1 });
     if (user) {
       user.age += 1;
-      await db.update('user', user);
+      await db.update({ store: 'user', record: user });
       logger.log('Updated:', user);
     } else {
       logger.log('User with id=1 not found');
@@ -52,14 +52,15 @@ const actions = {
   },
 
   delete: async () => {
-    await db.delete('user', { id: 2 });
+    await db.delete({ store: 'user', id: 2 });
     logger.log('Deleted user with id=2');
   },
 
   adults: async () => {
-    const users = await db.select('user', {
+    const users = await db.select({
+      store: 'user',
       filter: (user) => user.age >= 18,
-      order: 'name asc',
+      order: { name: 'asc' },
       limit: 10,
     });
     logger.log('Adults:', users);
