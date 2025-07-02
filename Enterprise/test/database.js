@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { Database } from '../static/database.js';
-import { Repository, Service } from '../static/core.js';
-import { UserModel, UserRepository, UserService } from '../static/user.js';
+import { Repository } from '../static/core.js';
+import { UserModel } from '../static/user.js';
 
 test('Enterprise: Database CRUD + queries', async () => {
   const db = new Database('TestDB', 1, (db) => {

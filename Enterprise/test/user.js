@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { Database } from '../static/database.js';
-import { Repository, Service } from '../static/core.js';
 import { UserModel, UserRepository, UserService } from '../static/user.js';
 
 test('Enterprise: UserModel validation', async () => {
@@ -38,5 +37,8 @@ test('Enterprise: UserService, UserRepository', async () => {
   const updatedUser = await userService.incrementAge(2);
   assert.equal(updatedUser.age, 34);
 
-  await assert.rejects(() => userService.incrementAge(999), /User with id=1 not found/);
+  await assert.rejects(
+    () => userService.incrementAge(999),
+    /User with id=1 not found/,
+  );
 });
