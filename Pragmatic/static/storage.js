@@ -22,10 +22,9 @@ class Database {
         resolve();
       };
       request.onerror = (event) => {
-        reject(
-          event.target.error ??
-            new Error(`IndexedDB: can't open ${this.#name}`),
-        );
+        let { error } = event.target;
+        if (!error) error = new Error(`IndexedDB: can't open ${this.#name}`);
+        reject(error);
       };
     });
     return this;
@@ -61,79 +60,70 @@ class Database {
   }
 
   insert({ store, record }) {
-    return this.#exec(store, (s) => s.add(record));
+    return this.#exec(store, (objectStore) => objectStore.add(record));
   }
 
   update({ store, record }) {
-    return this.#exec(store, (s) => s.put(record));
+    return this.#exec(store, (objectStore) => objectStore.put(record));
   }
 
   delete({ store, id }) {
-    return this.#exec(store, (s) => s.delete(id));
+    return this.#exec(store, (objectStore) => objectStore.delete(id));
   }
 
   get({ store, id }) {
-    return this.#exec(
-      store,
-      (s) => {
-        const req = s.get(id);
-        return new Promise((resolve, reject) => {
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
-        });
-      },
-      'readonly',
-    );
+    const op = (objectStore) => {
+      const req = objectStore.get(id);
+      return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error ?? new Error(`Can't get ${id}`));
+      });
+    };
+    return this.#exec(store, op, 'readonly');
   }
 
   select({ store, where, limit, offset, order, filter, sort }) {
-    return this.#exec(
-      store,
-      (s) => {
-        const results = [];
-        let skipped = 0;
-        return new Promise((resolve, reject) => {
-          const req = s.openCursor();
-          req.onerror = () => reject(req.error);
-          req.onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (!cursor) {
-              const filtered = filter ? results.filter(filter) : results;
-              return void resolve(
-                sort
-                  ? filtered.toSorted(sort)
-                  : Database.#order(filtered, order),
-              );
-            }
-            const record = cursor.value;
-            const match =
-              !where ||
-              Object.entries(where).every(([k, v]) => record[k] === v);
-            if (match) {
-              if (!offset || skipped >= offset) {
-                results.push(record);
-                if (limit && results.length >= limit) {
-                  return void resolve(results);
-                }
-              } else {
-                skipped++;
-              }
-            }
-            cursor.continue();
-          };
-        });
-      },
-      'readonly',
-    );
+    const op = (objectStore) => {
+      const result = [];
+      let skipped = 0;
+      return new Promise((resolve, reject) => {
+        const reply = () => {
+          if (sort) result.sort(sort);
+          if (order) Database.#sort(result, order);
+          resolve(result);
+        };
+        const req = objectStore.openCursor();
+        req.onerror = () => reject(req.error);
+        req.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return void reply();
+          const record = cursor.value;
+          const check = ([key, val]) => record[key] === val;
+          const match = !where || Object.entries(where).every(check);
+          const valid = !filter || filter(record);
+          if (match && valid) {
+            if (!offset || skipped >= offset) result.push(record);
+            else skipped++;
+            if (limit && result.length >= limit) return void reply();
+          }
+          cursor.continue();
+        };
+      });
+    };
+    return this.#exec(store, op, 'readonly');
   }
 
-  static #order(arr, order) {
-    if (!order || typeof order !== 'object') return arr;
-    const [[field, dir = 'asc']] = Object.entries(order);
+  static #sort(arr, order) {
+    if (typeof order !== 'object') return;
+    const rule = Object.entries(order)[0];
+    if (!Array.isArray(rule)) return;
+    const [field, dir = 'asc'] = rule;
     const sign = dir === 'desc' ? -1 : 1;
-    return [...arr].sort((a, b) => {
-      if (a[field] === b[field]) return 0;
-      return a[field] > b[field] ? sign : -sign;
+    arr.sort((a, b) => {
+      const x = a[field];
+      const y = b[field];
+      if (x === y) return 0;
+      return x > y ? sign : -sign;
     });
   }
 }
