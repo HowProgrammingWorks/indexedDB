@@ -67,11 +67,16 @@ const actions = {
   },
 };
 
-const init = () => {
-  for (const [id, handler] of Object.entries(actions)) {
-    const element = document.getElementById(id);
-    if (element) element.onclick = handler;
-  }
+const action = (id, handler) => {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.onclick = () => {
+    handler().catch((error) => {
+      logger.log(error.message);
+    });
+  };
 };
 
-init();
+for (const [id, handler] of Object.entries(actions)) {
+  action(id, handler);
+}
