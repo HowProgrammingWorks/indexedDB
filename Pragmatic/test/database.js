@@ -4,7 +4,7 @@ import 'fake-indexeddb/auto';
 import { Database } from '../static/storage.js';
 
 test('Pragmatic: Database CRUD + DSL', async () => {
-  const db = await new Database('TestDB', {
+  const db = await new Database('PragmaticDB', {
     version: 1,
     schemas: {
       user: { keyPath: 'id', autoIncrement: true },
@@ -71,4 +71,30 @@ test('Pragmatic: Database CRUD + DSL', async () => {
     limit: 1,
   });
   assert.equal(limited.length, 1);
+});
+
+test('Pragmatic: Complex DSL', async () => {
+  const db = await new Database('ComplexDB', {
+    version: 1,
+    schemas: {
+      user: { keyPath: 'id', autoIncrement: true },
+    },
+  });
+
+  await db.insert({ store: 'user', record: { name: 'Marcus', age: 20 } });
+  await db.insert({ store: 'user', record: { name: 'Lucius', age: 20 } });
+  await db.insert({ store: 'user', record: { name: 'Antoninus', age: 40 } });
+
+  const list = await db.select({
+    store: 'user',
+    where: { age: 20 },
+    filter: (user) => user.age < 30,
+    sort: (a, b) => a.age - b.age,
+    order: { name: 'desc' },
+    offset: 1,
+    limit: 1,
+  });
+
+  assert.equal(list.length, 1);
+  assert.equal(list[0].age, 20);
 });
