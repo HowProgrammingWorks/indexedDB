@@ -20,16 +20,18 @@ class Logger {
 
 const logger = new Logger('output');
 const schemas = {
-  user: { keyPath: 'id', autoIncrement: true },
+  user: {
+    id: { type: 'int', primary: true },
+    name: { type: 'str', index: true },
+    age: { type: 'int' },
+  },
 };
 const db = await new Database('Example', { version: 1, schemas });
 
 const actions = {
   add: async () => {
     const name = prompt('Enter user name:');
-    if (!name) return;
     const age = parseInt(prompt('Enter age:'), 10);
-    if (!Number.isInteger(age)) return;
     const user = { name, age };
     await db.insert({ store: 'user', record: user });
     logger.log('Added:', user);

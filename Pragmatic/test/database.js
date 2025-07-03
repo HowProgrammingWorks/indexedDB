@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { Database } from '../static/storage.js';
 
+const schemas = {
+  user: {
+    id: { type: 'int', primary: true },
+    name: { type: 'str', index: true },
+    age: { type: 'int' },
+  },
+};
+
 test('Pragmatic: Database CRUD + DSL', async () => {
-  const db = await new Database('PragmaticDB', {
-    version: 1,
-    schemas: {
-      user: { keyPath: 'id', autoIncrement: true },
-    },
-  });
+  const db = await new Database('PragmaticDB', { version: 1, schemas });
 
   // Insert
   await db.insert({ store: 'user', record: { name: 'Marcus', age: 20 } });
@@ -74,12 +77,7 @@ test('Pragmatic: Database CRUD + DSL', async () => {
 });
 
 test('Pragmatic: Complex DSL', async () => {
-  const db = await new Database('ComplexDB', {
-    version: 1,
-    schemas: {
-      user: { keyPath: 'id', autoIncrement: true },
-    },
-  });
+  const db = await new Database('ComplexDB', { version: 1, schemas });
 
   await db.insert({ store: 'user', record: { name: 'Marcus', age: 20 } });
   await db.insert({ store: 'user', record: { name: 'Lucius', age: 20 } });
