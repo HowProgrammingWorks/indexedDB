@@ -9,7 +9,7 @@ class Logger {
 
   log(...args) {
     const lines = args.map(Logger.#serialize);
-    this.#output.textContent += lines.join(' ') + '\n';
+    this.#output.textContent += `${lines.join(' ')}\n`;
     this.#output.scrollTop = this.#output.scrollHeight;
   }
 
